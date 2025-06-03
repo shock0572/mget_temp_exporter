@@ -4,13 +4,17 @@ A Prometheus exporter for NVIDIA/Mellanox network adapter temperature monitoring
 
 ## What This Does
 
-This exporter polls comprehensive temperature data from NVIDIA/Mellanox network adapters using a single command per device and exposes the metrics in Prometheus format. It provides:
+This exporter polls comprehensive temperature data from NVIDIA/Mellanox network adapters using two commands per device and exposes the metrics in Prometheus format. It provides:
 
-- **Device temperatures** (`mget_temp`): Main temperature readings from network adapters (extracted from iopx thermal diode)
+- **Device temperatures** (`mget_temp`): Main temperature readings from network adapters (direct reading from mget_temp -d DEVICE)
 - **Thermal diode temperatures** (`mget_thermal_diode_temp_celsius`): Individual thermal sensor temperature readings in Celsius, including maximum allowed temperature as a label
 - **Thermal diode voltages** (`mget_thermal_diode_voltage_volts`): Individual thermal sensor voltage readings in Volts, including maximum allowed voltage as a label
 
-The exporter uses a single `mget_temp -d device -v` command per device to gather both detailed thermal diode data and main temperature (from the iopx diode). It automatically distinguishes between temperature (T) and voltage (V) measurements and creates appropriate metrics for each type, with thresholds included as labels.
+The exporter uses two commands per device:
+- `mget_temp -d device` for the main temperature reading
+- `mget_temp -d device -v` for detailed thermal diode data
+
+It automatically distinguishes between temperature (T) and voltage (V) measurements and creates appropriate metrics for each type, with thresholds included as labels.
 
 The exporter reads device configurations from `devices.cfg`, polls temperature data every 10 seconds, and exposes only custom metrics (no Go runtime or process metrics) at the `/metrics` endpoint on port 6656 by default (configurable).
 
@@ -119,19 +123,19 @@ go install
 
 The exporter provides the following Prometheus metrics (only custom metrics, no Go runtime or process metrics):
 
-- `mget_temp{device="device_name"}`: Main temperature reading from the network adapter (extracted from iopx thermal diode)
+- `mget_temp{device="device_name"}`: Main temperature reading from the network adapter (direct reading from mget_temp -d DEVICE)
 - `mget_thermal_diode_temp_celsius{device="device_name", diode="diode_name", threshold="max_temp"}`: Temperature from individual thermal diodes in Celsius. The threshold label contains the maximum allowed temperature as an unsigned integer.
 - `mget_thermal_diode_voltage_volts{device="device_name", diode="diode_name", threshold="max_voltage"}`: Voltage from individual thermal diodes in Volts. The threshold label contains the maximum allowed voltage as an unsigned integer.
 
 ## How It Works
 
-The exporter efficiently gathers all temperature data using a single command per device:
+The exporter efficiently gathers temperature data using two commands per device:
 
-1. **Single Command Execution**: Runs `mget_temp -d device -v` for each configured device
-2. **Data Parsing**: Parses the tabular output to extract thermal diode information
-3. **Main Temperature Extraction**: Automatically extracts the main device temperature from the "iopx" thermal diode
+1. **Main Temperature**: Runs `mget_temp -d device` to get the main device temperature
+2. **Thermal Diode Data**: Runs `mget_temp -d device -v` to get detailed thermal diode information
+3. **Data Parsing**: Parses the tabular output to extract thermal diode information
 
-This approach is more efficient than running separate commands and ensures consistency between the main temperature metric and detailed thermal diode data.
+This approach ensures we get the most accurate main temperature reading directly from the device while still maintaining detailed thermal diode monitoring.
 
 ## Copyright and Legal Notice
 

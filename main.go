@@ -19,7 +19,7 @@ import (
 )
 
 var (
-	version   = "0.3"
+	version   = "0.4"
 	buildDate = "2025-06-03"
 	goVersion = runtime.Version()
 )
@@ -147,19 +147,31 @@ func parseThermalDiodeData(device, line string, dataRegex *regexp.Regexp) {
 
 // pollSingleDevice polls both thermal diode data and extracts main temperature for a single device
 func pollSingleDevice(device string) {
-	cmd := exec.Command("mget_temp", "-d", device, "-v")
-	output, err := cmd.CombinedOutput()
+	// Get main temperature
+	mainCmd := exec.Command("mget_temp", "-d", device)
+	mainOutput, err := mainCmd.CombinedOutput()
 	if err != nil {
-		slog.Error("Error running mget_temp -d <device> -v", "device", device, "error", err, "output", string(output), "output_length", len(output))
+		slog.Error("Error running mget_temp -d <device>", "device", device, "error", err, "output", string(mainOutput), "output_length", len(mainOutput))
+	} else {
+		// Parse main temperature (assuming it's a single float value)
+		temp, err := strconv.ParseFloat(strings.TrimSpace(string(mainOutput)), 64)
+		if err != nil {
+			slog.Error("Error parsing main temperature", "device", device, "error", err)
+		} else if gauge, exists := mgetTemps[device]; exists {
+			gauge.Set(temp)
+		}
+	}
 
-		// Test if mget_temp exists by trying to run it without args
-		testCmd := exec.Command("mget_temp")
-		_, _ = testCmd.CombinedOutput()
+	// Get thermal diode data
+	diodeCmd := exec.Command("mget_temp", "-d", device, "-v")
+	diodeOutput, err := diodeCmd.CombinedOutput()
+	if err != nil {
+		slog.Error("Error running mget_temp -d <device> -v", "device", device, "error", err, "output", string(diodeOutput), "output_length", len(diodeOutput))
 		return
 	}
 
 	// Parse the tabular output
-	lines := strings.Split(string(output), "\n")
+	lines := strings.Split(string(diodeOutput), "\n")
 	// Regex to match the data lines (skip header and empty lines)
 	dataRegex := regexp.MustCompile(`^\s*\d+\s+(\S+)\s+([TV])\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)`)
 
@@ -204,7 +216,7 @@ func main() {
 	for _, dev := range devices {
 		gauge := prometheus.NewGauge(prometheus.GaugeOpts{
 			Name:        "mget_temp",
-			Help:        "Main temperature reading from the network adapter (extracted from iopx thermal diode)",
+			Help:        "Main temperature reading from the network adapter (direct reading from mget_temp -d DEVICE)",
 			ConstLabels: prometheus.Labels{"device": dev},
 		})
 		customRegistry.MustRegister(gauge)
