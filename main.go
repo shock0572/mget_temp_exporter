@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"flag"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -18,7 +19,7 @@ import (
 )
 
 var (
-	version   = "0.2"
+	version   = "0.3"
 	buildDate = "2025-06-03"
 	goVersion = runtime.Version()
 )
@@ -31,9 +32,7 @@ var mgetTemps = map[string]prometheus.Gauge{}
 
 // Maps to hold thermal diode metrics
 var thermalDiodeTemps = map[string]prometheus.Gauge{}
-var thermalDiodeThresholds = map[string]prometheus.Gauge{}
 var thermalDiodeVoltages = map[string]prometheus.Gauge{}
-var thermalDiodeVoltageThresholds = map[string]prometheus.Gauge{}
 
 // Reads devices from devices.cfg (one per line)
 func readDevicesConfig(path string) ([]string, error) {
@@ -55,57 +54,47 @@ func readDevicesConfig(path string) ([]string, error) {
 }
 
 // createTemperatureMetrics creates and registers temperature metrics for a thermal diode
-func createTemperatureMetrics(device, diodeName, diodeKey string) {
+func createTemperatureMetrics(device, diodeName, diodeKey string, threshold float64) {
 	if _, exists := thermalDiodeTemps[diodeKey]; !exists {
 		tempGauge := prometheus.NewGauge(prometheus.GaugeOpts{
-			Name:        "mget_thermal_diode_temp_celsius",
-			Help:        "Temperature from thermal diode in Celsius",
-			ConstLabels: prometheus.Labels{"device": device, "diode": diodeName},
+			Name: "mget_thermal_diode_temp_celsius",
+			Help: "Temperature from thermal diode in Celsius. The threshold label contains the maximum allowed temperature as an unsigned integer.",
+			ConstLabels: prometheus.Labels{
+				"device":    device,
+				"diode":     diodeName,
+				"threshold": fmt.Sprintf("%d", uint(threshold)),
+			},
 		})
 		customRegistry.MustRegister(tempGauge)
 		thermalDiodeTemps[diodeKey] = tempGauge
-
-		threshGauge := prometheus.NewGauge(prometheus.GaugeOpts{
-			Name:        "mget_thermal_diode_temp_threshold_celsius",
-			Help:        "Temperature threshold for thermal diode in Celsius",
-			ConstLabels: prometheus.Labels{"device": device, "diode": diodeName},
-		})
-		customRegistry.MustRegister(threshGauge)
-		thermalDiodeThresholds[diodeKey] = threshGauge
 	}
 }
 
 // createVoltageMetrics creates and registers voltage metrics for a thermal diode
-func createVoltageMetrics(device, diodeName, diodeKey string) {
+func createVoltageMetrics(device, diodeName, diodeKey string, threshold float64) {
 	if _, exists := thermalDiodeVoltages[diodeKey]; !exists {
 		voltageGauge := prometheus.NewGauge(prometheus.GaugeOpts{
-			Name:        "mget_thermal_diode_voltage_volts",
-			Help:        "Voltage from thermal diode in Volts",
-			ConstLabels: prometheus.Labels{"device": device, "diode": diodeName},
+			Name: "mget_thermal_diode_voltage_volts",
+			Help: "Voltage from thermal diode in Volts. The threshold label contains the maximum allowed voltage as an unsigned integer.",
+			ConstLabels: prometheus.Labels{
+				"device":    device,
+				"diode":     diodeName,
+				"threshold": fmt.Sprintf("%d", uint(threshold)),
+			},
 		})
 		customRegistry.MustRegister(voltageGauge)
 		thermalDiodeVoltages[diodeKey] = voltageGauge
-
-		voltageThreshGauge := prometheus.NewGauge(prometheus.GaugeOpts{
-			Name:        "mget_thermal_diode_voltage_threshold_volts",
-			Help:        "Voltage threshold for thermal diode in Volts",
-			ConstLabels: prometheus.Labels{"device": device, "diode": diodeName},
-		})
-		customRegistry.MustRegister(voltageThreshGauge)
-		thermalDiodeVoltageThresholds[diodeKey] = voltageThreshGauge
 	}
 }
 
 // updateTemperatureMetrics updates temperature metrics with new values
-func updateTemperatureMetrics(diodeKey string, temp, threshold float64) {
+func updateTemperatureMetrics(diodeKey string, temp float64) {
 	thermalDiodeTemps[diodeKey].Set(temp)
-	thermalDiodeThresholds[diodeKey].Set(threshold)
 }
 
 // updateVoltageMetrics updates voltage metrics with new values
-func updateVoltageMetrics(diodeKey string, voltage, threshold float64) {
+func updateVoltageMetrics(diodeKey string, voltage float64) {
 	thermalDiodeVoltages[diodeKey].Set(voltage)
-	thermalDiodeVoltageThresholds[diodeKey].Set(threshold)
 }
 
 // parseThermalDiodeData parses a single line of thermal diode data and updates metrics
@@ -139,8 +128,8 @@ func parseThermalDiodeData(device, line string, dataRegex *regexp.Regexp) {
 	// Handle temperature vs voltage measurements
 	switch measurementType {
 	case "T":
-		createTemperatureMetrics(device, diodeName, diodeKey)
-		updateTemperatureMetrics(diodeKey, value, threshold)
+		createTemperatureMetrics(device, diodeName, diodeKey, threshold)
+		updateTemperatureMetrics(diodeKey, value)
 
 		// If this is the iopx diode, also set the main temperature gauge
 		if diodeName == "iopx" {
@@ -149,8 +138,8 @@ func parseThermalDiodeData(device, line string, dataRegex *regexp.Regexp) {
 			}
 		}
 	case "V":
-		createVoltageMetrics(device, diodeName, diodeKey)
-		updateVoltageMetrics(diodeKey, value, threshold)
+		createVoltageMetrics(device, diodeName, diodeKey, threshold)
+		updateVoltageMetrics(diodeKey, value)
 	default:
 		slog.Error("Unknown measurement type", "device", device, "diode", diodeName, "measurement_type", measurementType)
 	}
