@@ -16,7 +16,7 @@ The exporter uses two commands per device:
 
 It automatically distinguishes between temperature (T) and voltage (V) measurements and creates appropriate metrics for each type, with thresholds included as labels.
 
-The exporter reads device configurations from `devices.cfg`, polls temperature data every 10 seconds, and exposes only custom metrics (no Go runtime or process metrics) at the `/metrics` endpoint on port 6656 by default (configurable).
+The exporter automatically discovers MST devices using `mst status` command, polls temperature data every 10 seconds, and exposes only custom metrics (no Go runtime or process metrics) at the `/metrics` endpoint on port 6656 by default (configurable).
 
 ## Requirements
 
@@ -30,25 +30,27 @@ The exporter reads device configurations from `devices.cfg`, polls temperature d
 Download and install NVIDIA Firmware Tools from:
 https://network.nvidia.com/products/adapter-software/firmware-tools/
 
-Ensure the `mget_temp` utility is available in your system PATH.
+Ensure both the `mget_temp` and `mst` utilities are available in your system PATH.
 
-## Configuration
+## Device Discovery
 
-Edit the `devices.cfg` file to specify your network adapter devices (one per line):
+The exporter automatically discovers MST devices using the `mst status` command. No manual configuration is required - it will find and monitor all available MST devices.
 
-**Linux format (full path):**
-```
-/dev/mst/mt4127_pciconf0
-/dev/mst/mt4127_pciconf1
-```
-
-**Windows format (short name):**
-```
-mt4127_pciconf0
-mt4127_pciconf1
+⚠️ **Important for Linux:** You must run `mst start` first before device discovery will work:
+```bash
+sudo mst start
 ```
 
-Use the appropriate format for your operating system. On Linux, devices are typically accessed via `/dev/mst/` paths, while on Windows, you can use the short device names directly.
+**Manual Device Specification (Optional):**
+
+If you need to specify devices manually, use the `-devices` flag:
+```bash
+# Linux
+sudo ./mget_exporter -devices "/dev/mst/mt4127_pciconf0,/dev/mst/mt4128_pciconf0"
+
+# Windows
+mget_exporter.exe -devices "mt4115_pciconf0,mt4116_pciconf0"
+```
 
 ## Compilation
 
@@ -87,11 +89,18 @@ go install
 ### Command Line Options
 
 - `-port string`: Port to listen on (default "6656")
+- `-devices string`: Comma-separated list of device IDs (optional - if not specified, will auto-discover using `mst status` - ⚠️ On Linux you will have to run `mst start` first )
 
 ### Linux
 
-1. Configure your devices in `devices.cfg`
-2. Run the exporter with sudo:
+1. **First, start the MST service:**
+
+   ```bash
+   sudo mst start
+   ```
+
+2. Run the exporter with sudo (automatic device discovery):
+
    ```bash
    sudo ./mget_exporter
    ```
@@ -100,13 +109,18 @@ go install
    ```bash
    sudo ./mget_exporter -port 8080
    ```
+
+   Or with manual device specification:
+   ```bash
+   sudo ./mget_exporter -devices "/dev/mst/mt4127_pciconf0,/dev/mst/mt4128_pciconf0"
+   ```
+
 3. Access metrics at `http://localhost:6656/metrics` (or your custom port)
 
 ### Windows
 
-1. Configure your devices in `devices.cfg`
-2. Open Command Prompt or PowerShell **as Administrator**
-3. Run the exporter:
+1. Open Command Prompt or PowerShell **as Administrator**
+2. Run the exporter (automatic device discovery):
    ```cmd
    mget_exporter.exe
    ```
@@ -115,7 +129,13 @@ go install
    ```cmd
    mget_exporter.exe -port 8080
    ```
-4. Access metrics at `http://localhost:6656/metrics` (or your custom port)
+
+   Or with manual device specification:
+   ```cmd
+   mget_exporter.exe -devices "mt4115_pciconf0,mt4116_pciconf0"
+   ```
+
+3. Access metrics at `http://localhost:6656/metrics` (or your custom port)
 
 **Note:** On Windows, you must run the entire terminal session as Administrator before executing the exporter.
 
@@ -129,13 +149,14 @@ The exporter provides the following Prometheus metrics (only custom metrics, no 
 
 ## How It Works
 
-The exporter efficiently gathers temperature data using two commands per device:
+The exporter efficiently gathers temperature data using the following approach:
 
-1. **Main Temperature**: Runs `mget_temp -d device` to get the main device temperature
-2. **Thermal Diode Data**: Runs `mget_temp -d device -v` to get detailed thermal diode information
+1. **Main Temperature**: Runs `mget_temp -d device` to get the main device temperature for each discovered device
+2. **Thermal Diode Data**: Runs `mget_temp -d device -v` to get detailed thermal diode information for each device
 3. **Data Parsing**: Parses the tabular output to extract thermal diode information
+4. **Parallel Processing**: Each device is monitored in parallel for optimal performance
 
-This approach ensures we get the most accurate main temperature reading directly from the device while still maintaining detailed thermal diode monitoring.
+This approach ensures automatic discovery of all available devices while maintaining the most accurate temperature readings.
 
 ## Copyright and Legal Notice
 

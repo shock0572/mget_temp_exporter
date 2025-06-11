@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -19,8 +18,8 @@ import (
 )
 
 var (
-	version   = "0.4"
-	buildDate = "2025-06-03"
+	version   = "0.5"
+	buildDate = "2025-06-11"
 	goVersion = runtime.Version()
 )
 
@@ -34,23 +33,73 @@ var mgetTemps = map[string]prometheus.Gauge{}
 var thermalDiodeTemps = map[string]prometheus.Gauge{}
 var thermalDiodeVoltages = map[string]prometheus.Gauge{}
 
-// Reads devices from devices.cfg (one per line)
-func readDevicesConfig(path string) ([]string, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
+// getDevices attempts to get device list from command line args or enumerates using mst status
+func getDevices(deviceArgs []string) ([]string, error) {
 	var devices []string
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		// Skip empty lines and lines that start with #
-		if line != "" && !strings.HasPrefix(line, "#") {
-			devices = append(devices, line)
+
+	// If devices were provided via command line, use those
+	if len(deviceArgs) > 0 {
+		slog.Info("Using devices from command line", "devices", deviceArgs)
+		return deviceArgs, nil
+	}
+
+	// Otherwise, enumerate devices using mst status
+	slog.Info("No devices specified, enumerating MST devices using 'mst status'...")
+
+	cmd := exec.Command("mst", "status")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("failed to run 'mst status': %v (output: %s)", err, string(output))
+	}
+
+	// Parse the output to extract device names
+	lines := strings.Split(string(output), "\n")
+	inDevicesSection := false
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+
+		// Look for the "MST devices:" section
+		if strings.Contains(line, "MST devices:") {
+			inDevicesSection = true
+			continue
+		}
+
+		// Skip separator lines and empty lines
+		if line == "" || strings.HasPrefix(line, "---") || strings.HasPrefix(line, "MST modules:") {
+			continue
+		}
+
+		// If we're in the devices section and find a non-empty line
+		if inDevicesSection && line != "" {
+			var deviceName string
+
+			if runtime.GOOS == "windows" {
+				// Windows format: just the device name on its own line
+				// e.g., "mt4115_pciconf0"
+				deviceName = line
+			} else {
+				// Linux format: "/dev/mst/mt4127_pciconf0         - PCI configuration..."
+				// Extract the device path before the first space or dash
+				parts := strings.Fields(line)
+				if len(parts) > 0 && strings.HasPrefix(parts[0], "/dev/mst/") {
+					deviceName = parts[0]
+				}
+			}
+
+			// Validate that we found a device name and it looks like an MST device
+			if deviceName != "" && strings.Contains(deviceName, "mt4") {
+				devices = append(devices, deviceName)
+				slog.Info("Found MST device", "device", deviceName)
+			}
 		}
 	}
-	return devices, scanner.Err()
+
+	if len(devices) == 0 {
+		return nil, fmt.Errorf("no MST devices found. Please check that MST tools are installed and devices are available. You can also specify devices manually using -devices flag")
+	}
+
+	return devices, nil
 }
 
 // createTemperatureMetrics creates and registers temperature metrics for a thermal diode
@@ -201,13 +250,25 @@ func main() {
 
 	// Parse command line flags
 	port := flag.String("port", "6656", "Port to listen on")
+	devicesFlag := flag.String("devices", "", "Comma-separated list of device IDs (e.g., eth0,eth1). If not specified, will try common device patterns.")
 	flag.Parse()
 
-	devices, err := readDevicesConfig("devices.cfg")
+	var deviceList []string
+	if *devicesFlag != "" {
+		deviceList = strings.Split(*devicesFlag, ",")
+		// Trim whitespace from each device
+		for i, device := range deviceList {
+			deviceList[i] = strings.TrimSpace(device)
+		}
+	}
+
+	devices, err := getDevices(deviceList)
 	if err != nil {
-		slog.Error("Failed to load devices.cfg", "error", err)
+		slog.Error("Failed to get devices", "error", err)
 		os.Exit(1)
 	}
+
+	slog.Info("Discovered devices", "devices", devices, "count", len(devices))
 
 	// Start polling all device data
 	go pollDevices(devices)
@@ -216,7 +277,7 @@ func main() {
 	for _, dev := range devices {
 		gauge := prometheus.NewGauge(prometheus.GaugeOpts{
 			Name:        "mget_temp",
-			Help:        "Main temperature reading from the network adapter (direct reading from mget_temp -d DEVICE)",
+			Help:        "Main temperature reading from the network adapter",
 			ConstLabels: prometheus.Labels{"device": dev},
 		})
 		customRegistry.MustRegister(gauge)
