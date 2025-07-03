@@ -288,13 +288,13 @@ func main() {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("mget_exporter<br><br>Metrics are at <a href=\"/metrics\">/metrics</a>\n"))
+		w.Write([]byte("mget_temp_exporter<br><br>Metrics are at <a href=\"/metrics\">/metrics</a>\n"))
 	})
 
 	// Use custom registry with the HTTP handler
 	http.Handle("/metrics", promhttp.HandlerFor(customRegistry, promhttp.HandlerOpts{}))
 
-	slog.Info("Starting mget_exporter",
+	slog.Info("Starting mget_temp_exporter",
 		"version", version,
 		"goversion", goVersion,
 		"builddate", buildDate,
