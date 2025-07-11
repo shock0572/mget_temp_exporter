@@ -1,4 +1,4 @@
-module mget_exporter
+module mget_temp_exporter
 
 go 1.22.2
 
