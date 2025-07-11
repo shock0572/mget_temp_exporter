@@ -18,8 +18,8 @@ import (
 )
 
 var (
-	version   = "0.5"
-	buildDate = "2025-06-11"
+	version   = "0.6"
+	buildDate = "2025-07-11"
 	goVersion = runtime.Version()
 )
 
@@ -179,13 +179,6 @@ func parseThermalDiodeData(device, line string, dataRegex *regexp.Regexp) {
 	case "T":
 		createTemperatureMetrics(device, diodeName, diodeKey, threshold)
 		updateTemperatureMetrics(diodeKey, value)
-
-		// If this is the iopx diode, also set the main temperature gauge
-		if diodeName == "iopx" {
-			if gauge, exists := mgetTemps[device]; exists {
-				gauge.Set(value)
-			}
-		}
 	case "V":
 		createVoltageMetrics(device, diodeName, diodeKey, threshold)
 		updateVoltageMetrics(diodeKey, value)
