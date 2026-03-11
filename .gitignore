@@ -1,0 +1,21 @@
+# Build output
+build/
+mget_exporter
+mget_exporter.exe
+
+# Go
+*.exe~
+*.test
+*.out
+*.prof
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db

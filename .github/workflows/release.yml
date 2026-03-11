@@ -1,0 +1,53 @@
+name: Build and Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Get version from source
+        id: version
+        run: |
+          VERSION=$(grep -oP 'version\s+=\s+"\K[^"]+' main.go)
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Build all platforms
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          BUILD_DATE=$(date -u +%Y-%m-%d)
+          LDFLAGS="-s -w -X main.version=${VERSION} -X main.buildDate=${BUILD_DATE}"
+          mkdir -p build
+
+          GOOS=linux  GOARCH=amd64 go build -ldflags "$LDFLAGS" -o build/mget_exporter_linux_amd64 .
+          GOOS=linux  GOARCH=arm64 go build -ldflags "$LDFLAGS" -o build/mget_exporter_linux_arm64 .
+          GOOS=windows GOARCH=amd64 go build -ldflags "$LDFLAGS" -o build/mget_exporter_windows_amd64.exe .
+
+      - name: Delete existing release
+        run: gh release delete "v${{ steps.version.outputs.version }}" --yes --cleanup-tag || true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create release
+        run: |
+          gh release create "v${{ steps.version.outputs.version }}" \
+            build/mget_exporter_linux_amd64 \
+            build/mget_exporter_linux_arm64 \
+            build/mget_exporter_windows_amd64.exe \
+            --title "v${{ steps.version.outputs.version }}" \
+            --notes "Built from $(git rev-parse --short HEAD) on $(date -u +%Y-%m-%d)" \
+            --latest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -20,7 +20,7 @@ The exporter automatically discovers MST devices using `mst status` command, pol
 
 ## Requirements
 
-- Go 1.22.2
+- Go 1.26+
 - NVIDIA Firmware Tools (MFT) must be installed and available in your PATH
 - NVIDIA/Mellanox network adapters
 - **Superuser/Administrator privileges** - The exporter must be run with elevated privileges as the `mget_temp` utility requires superuser access
@@ -54,32 +54,24 @@ mget_exporter.exe -devices "mt4115_pciconf0,mt4116_pciconf0"
 
 ## Compilation
 
-### Linux
+### Using the build script (recommended)
 
-To build the exporter:
-
-```bash
-go build -o mget_exporter main.go
-```
-
-Or to build and install:
+The included `build.sh` script cross-compiles for Linux (amd64, arm64) and Windows (amd64) with stripped binaries:
 
 ```bash
-go install
+./build.sh
 ```
 
-### Windows
+Binaries are placed in the `build/` directory.
 
-To build the exporter:
+### Manual build
 
-```cmd
-go build -o mget_exporter.exe main.go
-```
+```bash
+# Linux
+go build -o mget_exporter .
 
-Or to build and install:
-
-```cmd
-go install
+# Windows (cross-compile from Linux)
+GOOS=windows GOARCH=amd64 go build -o mget_exporter.exe .
 ```
 
 ## Usage
