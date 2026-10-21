@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-VERSION="0.7"
+VERSION="0.8"
 BUILD_DATE=$(date -u +%Y-%m-%d)
 OUTPUT_DIR="build"
 

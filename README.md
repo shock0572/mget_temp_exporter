@@ -20,7 +20,7 @@ The exporter automatically discovers MST devices using `mst status` command, pol
 
 ## Requirements
 
-- Go 1.26+
+- Go 1.27.3+
 - NVIDIA Firmware Tools (MFT) must be installed and available in your PATH
 - NVIDIA/Mellanox network adapters
 - **Superuser/Administrator privileges** - The exporter must be run with elevated privileges as the `mget_temp` utility requires superuser access
